@@ -1,0 +1,23 @@
+.{
+    .name = .flowdata_drivers,
+    .version = "0.2.0",
+    .minimum_zig_version = "0.17.1",
+    .fingerprint = 0x67a051ab06330ab4,
+    .dependencies = .{
+        .flowdata_sdk = .{
+            .path = "../flowdata-sdk",
+        },
+        .flowdata_libs = .{
+            .path = "../flowdata-libs",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "memory",
+        "file_store",
+        "sqlite",
+        "yaml",
+        "ssh_store",
+    },
+}
