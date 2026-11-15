@@ -13,22 +13,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout driver
-        uses: actions/checkout@v4
-        with:
-          path: driver
-
-      - name: Checkout sibling sdk
-        uses: actions/checkout@v4
-        with:
-          repository: parabellum-kernel/sdk
-          path: sdk
-
-      - name: Checkout sibling lib
-        uses: actions/checkout@v4
-        with:
-          repository: parabellum-kernel/lib
-          path: lib
+      - uses: actions/checkout@v4
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -39,7 +24,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 
       - name: Build & Test
-        working-directory: driver
         run: |
           zig build
           zig build test
