@@ -1,4 +1,4 @@
-pub const lib = @import("flowdata_sqlite");
+pub const lib = @import("parabellum_sqlite");
 pub const repository = @import("sqlite_repository.zig");
 pub const schema_provisioner = @import("schema_provisioner.zig");
 pub const predicate_compiler = @import("predicate_compiler.zig");
@@ -7,7 +7,7 @@ pub const SqliteRepository = repository.SqliteRepository;
 pub const Db = lib.Db;
 
 const std = @import("std");
-const flowdata = @import("flowdata");
+const parabellum = @import("parabellum");
 
 test "SqliteRepository writes DynamicRecords and persists tables" {
     const alloc = std.testing.allocator;
@@ -15,17 +15,17 @@ test "SqliteRepository writes DynamicRecords and persists tables" {
     var repo = SqliteRepository.init(alloc, db);
     defer repo.deinit();
 
-    const fields = try alloc.alloc(flowdata.dataflow.DynamicField, 3);
+    const fields = try alloc.alloc(parabellum.dataflow.DynamicField, 3);
     defer alloc.free(fields);
     fields[0] = .{ .name = "series_id", .value = .{ .string = "manga-123" } };
     fields[1] = .{ .name = "title", .value = .{ .string = "Frieren" } };
     fields[2] = .{ .name = "year", .value = .{ .int = 2020 } };
 
-    const records = try alloc.alloc(flowdata.dataflow.DynamicRecord, 1);
+    const records = try alloc.alloc(parabellum.dataflow.DynamicRecord, 1);
     defer alloc.free(records);
-    records[0] = flowdata.dataflow.DynamicRecord.init(fields);
+    records[0] = parabellum.dataflow.DynamicRecord.init(fields);
 
-    const payload = flowdata.dataflow.PayloadHandle.fromSlice(flowdata.dataflow.DynamicRecord, records);
+    const payload = parabellum.dataflow.PayloadHandle.fromSlice(parabellum.dataflow.DynamicRecord, records);
     try repo.writePayload("catalog_series", payload);
 
     try std.testing.expectEqual(@as(usize, 1), repo.recordCount("catalog_series"));

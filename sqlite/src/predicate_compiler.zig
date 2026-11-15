@@ -1,12 +1,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const predicate_ast = flowdata.dataflow.predicate_ast;
+const parabellum = @import("parabellum");
+const predicate_ast = parabellum.dataflow.predicate_ast;
 const PredicateNode = predicate_ast.PredicateNode;
 const Literal = predicate_ast.Literal;
 const CmpOp = predicate_ast.CmpOp;
-const sql = @import("flowdata_sql");
-const sqlite_lib = @import("flowdata_sqlite");
+const sql = @import("parabellum_sql");
+const sqlite_lib = @import("parabellum_sqlite");
 
 fn literalToSqlValue(lit: Literal) sql.SqlValue {
     return switch (lit) {
@@ -29,7 +29,7 @@ fn mapCmpOp(op: CmpOp) sql.CmpOp {
     };
 }
 
-/// Converts a Flowdata `PredicateNode` AST into a portable `sql.Expr` AST
+/// Converts a Parabellum `PredicateNode` AST into a portable `sql.Expr` AST
 /// using `arena` for child node allocations (zero SQL string building).
 pub fn toSqlExpr(arena: Allocator, node: *const PredicateNode) !*const sql.Expr {
     const out = try arena.create(sql.Expr);

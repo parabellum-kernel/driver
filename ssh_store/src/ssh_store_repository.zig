@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const PayloadHandle = flowdata.dataflow.PayloadHandle;
-const repository = flowdata.repository;
+const parabellum = @import("parabellum");
+const PayloadHandle = parabellum.dataflow.PayloadHandle;
+const repository = parabellum.repository;
 const StorageRepository = repository.StorageRepository;
 const ConfigParam = repository.ConfigParam;
 

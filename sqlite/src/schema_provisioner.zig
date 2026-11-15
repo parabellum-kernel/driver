@@ -1,13 +1,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const schema = flowdata.schema;
+const parabellum = @import("parabellum");
+const schema = parabellum.schema;
 const SchemaCatalog = schema.SchemaCatalog;
 const TableSchema = schema.TableSchema;
 const ColumnSpec = schema.ColumnSpec;
 const ColumnType = schema.ColumnType;
 const ForeignKeyAction = schema.ForeignKeyAction;
-const sqlite_lib = @import("flowdata_sqlite");
+const sqlite_lib = @import("parabellum_sqlite");
 const Db = sqlite_lib.Db;
 const Value = sqlite_lib.Value;
 const ddl = sqlite_lib.ddl;
@@ -94,7 +94,7 @@ fn buildColumnDef(col_name: []const u8, c_spec: ColumnSpec, table_pk_len: usize)
 
 /// Translates a format-agnostic `SchemaCatalog` into SQLite DDL, executes
 /// Phase 1 non-destructive migrations, seeds rows via parameterized statements,
-/// and records schema metadata in `_flowdata_schema`.
+/// and records schema metadata in `_parabellum_schema`.
 pub fn provisionCatalogWithMode(
     allocator: Allocator,
     db: *Db,
@@ -105,7 +105,7 @@ pub fn provisionCatalogWithMode(
 
     if (mode == .auto) {
         try db.execZ(
-            \\CREATE TABLE IF NOT EXISTS "_flowdata_schema" (
+            \\CREATE TABLE IF NOT EXISTS "_parabellum_schema" (
             \\    "table_name" TEXT PRIMARY KEY,
             \\    "schema_hash" TEXT NOT NULL,
             \\    "updated_at" INTEGER NOT NULL
@@ -299,7 +299,7 @@ fn provisionTable(
     if (mode == .auto) {
         const hash = computeTableHash(tbl);
         var meta_stmt = try db.prepare(
-            \\INSERT INTO "_flowdata_schema" ("table_name", "schema_hash", "updated_at")
+            \\INSERT INTO "_parabellum_schema" ("table_name", "schema_hash", "updated_at")
             \\VALUES (?1, ?2, ?3)
             \\ON CONFLICT("table_name") DO UPDATE SET
             \\    "schema_hash" = excluded."schema_hash",

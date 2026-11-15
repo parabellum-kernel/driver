@@ -1,5 +1,5 @@
 const std = @import("std");
-const sdk = @import("flowdata_sdk");
+const sdk = @import("parabellum_sdk");
 const abi = sdk.abi;
 
 const c = @import("sqlite3_c");
@@ -146,7 +146,7 @@ const SqliteRowIterator = struct {
     };
 };
 
-/// Standalone C-ABI SQLite Driver (zero dependency on `flowdata` core source).
+/// Standalone C-ABI SQLite Driver (zero dependency on `parabellum` core source).
 pub const SqliteDriver = struct {
     allocator: std.mem.Allocator,
     db: *c.sqlite3,

@@ -1,8 +1,8 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const PayloadHandle = flowdata.dataflow.PayloadHandle;
-const repository = flowdata.repository;
+const parabellum = @import("parabellum");
+const PayloadHandle = parabellum.dataflow.PayloadHandle;
+const repository = parabellum.repository;
 const StorageRepository = repository.StorageRepository;
 const ConfigParam = repository.ConfigParam;
 
@@ -338,13 +338,13 @@ test "ARCH-036 TASK-036.5: FileStoreRepository streams piece_table and spilled_f
     defer alloc.free(src_buf);
     for (src_buf, 0..) |*b, i| b.* = @truncate((i *% 31) ^ 0x5A);
 
-    const src_backing = flowdata.dataflow.StreamBacking{ .memory = src_buf };
-    const pieces = [_]flowdata.dataflow.StreamPiece{
+    const src_backing = parabellum.dataflow.StreamBacking{ .memory = src_buf };
+    const pieces = [_]parabellum.dataflow.StreamPiece{
         .{ .inline_bytes = "FTYP_HDR" },
         .{ .source_slice = .{ .offset = 100, .len = 270 * 1024 } },
         .{ .zero_fill = 512 },
     };
-    const pt_backing = try flowdata.dataflow.StreamBacking.buildPieceTable(alloc, &src_backing, &pieces);
+    const pt_backing = try parabellum.dataflow.StreamBacking.buildPieceTable(alloc, &src_backing, &pieces);
     defer {
         alloc.free(pt_backing.piece_table.pieces);
         alloc.free(pt_backing.piece_table.cumulative_ends);
@@ -371,7 +371,7 @@ test "ARCH-036 TASK-036.5: FileStoreRepository streams piece_table and spilled_f
         const data = "SPILLED_STREAM_CONTENT_0123456789";
         _ = c.fwrite(data.ptr, 1, data.len, fp);
     }
-    const spill_backing = flowdata.dataflow.StreamBacking{
+    const spill_backing = parabellum.dataflow.StreamBacking{
         .spilled_file = .{ .path = spill_src, .size = 33 },
     };
     try repo.writePayload("spill_out", PayloadHandle.fromStreamBacking(&spill_backing));

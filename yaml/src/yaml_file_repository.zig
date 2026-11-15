@@ -1,11 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const PayloadHandle = flowdata.dataflow.PayloadHandle;
-const repository = flowdata.repository;
+const parabellum = @import("parabellum");
+const PayloadHandle = parabellum.dataflow.PayloadHandle;
+const repository = parabellum.repository;
 const StorageRepository = repository.StorageRepository;
-const JobSpec = flowdata.ast.JobSpec;
-const yaml = flowdata.yaml;
+const JobSpec = parabellum.ast.JobSpec;
+const yaml = parabellum.yaml;
 
 /// File-based YAML datasource driver.
 /// Parses an external YAML file containing jobs or target entries and exposes them
@@ -26,7 +26,7 @@ pub const YamlFileRepository = struct {
 
         const owned_path = try arena_alloc.dupe(u8, path);
 
-        const yaml_bytes = try flowdata.readFileBytes(arena_alloc, path);
+        const yaml_bytes = try parabellum.readFileBytes(arena_alloc, path);
 
         var env_interp = yaml.EnvInterpolator.init(false);
         const root_node = try yaml.yaml_lib.parseAst(arena_alloc, yaml_bytes, .{

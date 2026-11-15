@@ -1,5 +1,5 @@
 const std = @import("std");
-const sdk = @import("flowdata_sdk");
+const sdk = @import("parabellum_sdk");
 const abi = sdk.abi;
 
 const StoredField = struct {
@@ -57,7 +57,7 @@ const MemoryRowIterator = struct {
     };
 };
 
-/// Standalone C-ABI Memory Driver (zero dependency on `flowdata` core source).
+/// Standalone C-ABI Memory Driver (zero dependency on `parabellum` core source).
 pub const MemoryDriver = struct {
     allocator: std.mem.Allocator,
     tables: std.StringHashMapUnmanaged(TableStore) = .{},

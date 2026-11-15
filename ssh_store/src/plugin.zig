@@ -1,8 +1,8 @@
 const std = @import("std");
-const sdk = @import("flowdata_sdk");
+const sdk = @import("parabellum_sdk");
 const abi = sdk.abi;
 
-/// Standalone C-ABI SSH Store Driver (zero dependency on `flowdata` core source).
+/// Standalone C-ABI SSH Store Driver (zero dependency on `parabellum` core source).
 pub const SshStoreDriver = struct {
     allocator: std.mem.Allocator,
 

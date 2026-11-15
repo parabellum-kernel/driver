@@ -1,17 +1,17 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const schema = flowdata.schema;
+const parabellum = @import("parabellum");
+const schema = parabellum.schema;
 const SchemaCatalog = schema.SchemaCatalog;
 const TableSchema = schema.TableSchema;
-const dataflow = flowdata.dataflow;
+const dataflow = parabellum.dataflow;
 const PayloadHandle = dataflow.PayloadHandle;
 const DynamicRecord = dataflow.DynamicRecord;
 const ReflectedValue = dataflow.ReflectedValue;
 const ReflectedField = dataflow.DynamicField;
 const predicate_ast = dataflow.predicate_ast;
 const PredicateNode = predicate_ast.PredicateNode;
-const repository = flowdata.repository;
+const repository = parabellum.repository;
 const Repository = repository.Repository;
 const StorageRepository = repository.StorageRepository;
 const ConfigParam = repository.ConfigParam;
@@ -19,8 +19,8 @@ const Capabilities = repository.Capabilities;
 const WriteSpec = repository.WriteSpec;
 const ReadSpec = repository.ReadSpec;
 const RowIterator = repository.RowIterator;
-const sql = @import("flowdata_sql");
-const sqlite_lib = @import("flowdata_sqlite");
+const sql = @import("parabellum_sql");
+const sqlite_lib = @import("parabellum_sqlite");
 const Db = sqlite_lib.Db;
 const Stmt = sqlite_lib.Stmt;
 const StmtCache = sqlite_lib.StmtCache;
@@ -685,11 +685,11 @@ pub const SqliteRepository = struct {
         if (schema_path) |spath| {
             errdefer self_ptr.schema_arena.deinit();
             errdefer self_ptr.tables.deinit(allocator);
-            const bytes = try flowdata.readFileBytes(allocator, spath);
+            const bytes = try parabellum.readFileBytes(allocator, spath);
             defer allocator.free(bytes);
             const arena = self_ptr.schema_arena.allocator();
 
-            const catalog = try flowdata.yaml.parseSchemaCatalog(arena, bytes, null);
+            const catalog = try parabellum.yaml.parseSchemaCatalog(arena, bytes, null);
             try self_ptr.ensureSchema(&catalog);
         }
 

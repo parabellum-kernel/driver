@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const flowdata = @import("flowdata");
-const dataflow = flowdata.dataflow;
+const parabellum = @import("parabellum");
+const dataflow = parabellum.dataflow;
 const PayloadHandle = dataflow.PayloadHandle;
 const ReflectedValue = dataflow.ReflectedValue;
 const DynamicRecord = dataflow.DynamicRecord;
@@ -9,13 +9,13 @@ const DynamicField = dataflow.DynamicField;
 const predicate_ast = dataflow.predicate_ast;
 const PredicateNode = predicate_ast.PredicateNode;
 const Literal = predicate_ast.Literal;
-const schema = flowdata.schema;
+const schema = parabellum.schema;
 const SchemaCatalog = schema.SchemaCatalog;
 const TableSchema = schema.TableSchema;
 const ColumnSpec = schema.ColumnSpec;
 const ColumnType = schema.ColumnType;
 const DefaultValue = schema.DefaultValue;
-const repository_mod = flowdata.repository;
+const repository_mod = parabellum.repository;
 const Repository = repository_mod.Repository;
 const StorageRepository = repository_mod.StorageRepository;
 const Capabilities = repository_mod.Capabilities;
@@ -25,7 +25,7 @@ const ReadSpec = repository_mod.ReadSpec;
 const RowIterator = repository_mod.RowIterator;
 const OrderByColumn = repository_mod.OrderByColumn;
 const ProjectionMode = repository_mod.ProjectionMode;
-const Mutex = flowdata.concurrency.Mutex;
+const Mutex = parabellum.concurrency.Mutex;
 
 /// Behavioral oracle & in-memory repository (ARCH-009A §3).
 ///

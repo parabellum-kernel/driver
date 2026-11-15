@@ -1,13 +1,13 @@
 .{
-    .name = .flowdata_drivers,
+    .name = .parabellum_drivers,
     .version = "1.0.0",
     .minimum_zig_version = "0.17.1",
     .fingerprint = 0x67a051ab06330ab4,
     .dependencies = .{
-        .flowdata_sdk = .{
+        .parabellum_sdk = .{
             .path = "../sdk",
         },
-        .flowdata_libs = .{
+        .parabellum_libs = .{
             .path = "../lib",
         },
     },
