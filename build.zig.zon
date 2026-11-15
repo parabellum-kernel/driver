@@ -2,7 +2,7 @@
     .name = .parabellum_drivers,
     .version = "1.0.0",
     .minimum_zig_version = "0.17.1",
-    .fingerprint = 0x67a051ab06330ab4,
+    .fingerprint = 0xb8fc1dba4ed3025d,
     .dependencies = .{
         .parabellum_sdk = .{
             .path = "../sdk",
