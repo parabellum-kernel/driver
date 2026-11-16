@@ -12,6 +12,9 @@
             .url = "git+https://github.com/parabellum-kernel/lib.git#v1.0.0",
             .hash = "parabellum_libs-1.0.0-xPH3Y7bvDQAaotjjWkCABhEIveDyB1zpTUxSFn8rOy2c",
         },
+        .lib_gdrive_vfs = .{
+            .path = "../lib-gdrive-vfs",
+        },
     },
     .paths = .{
         "build.zig",
@@ -21,5 +24,6 @@
         "sqlite",
         "yaml",
         "ssh_store",
+        "gdrive_store",
     },
 }
