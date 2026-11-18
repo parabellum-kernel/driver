@@ -1,6 +1,6 @@
 .{
     .name = .parabellum_drivers,
-    .version = "1.0.0",
+    .version = "1.2.0",
     .minimum_zig_version = "0.17.1",
     .fingerprint = 0xb8fc1dba4ed3025d,
     .dependencies = .{
@@ -9,8 +9,8 @@
             .hash = "parabellum_sdk-1.0.0-46CU-mGBAwBthyYaGAzjV3OpEFDNNQB4ytjaLIpYn_T1",
         },
         .parabellum_libs = .{
-            .url = "git+https://github.com/parabellum-kernel/lib.git#v1.0.0",
-            .hash = "parabellum_libs-1.0.0-xPH3Y7bvDQAaotjjWkCABhEIveDyB1zpTUxSFn8rOy2c",
+            .url = "git+https://github.com/parabellum-kernel/lib.git#v1.1.0",
+            .hash = "parabellum_libs-1.1.0-xPH3Yw9oEAAEqKcCpRpgDPqlHw6kGHcitpduzkL5A_L9",
         },
         .lib_gdrive_vfs = .{
             .path = "../lib-gdrive-vfs",

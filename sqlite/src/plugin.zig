@@ -150,14 +150,19 @@ const SqliteRowIterator = struct {
 pub const SqliteDriver = struct {
     allocator: std.mem.Allocator,
     db: *c.sqlite3,
+    blob_columns: std.StringHashMapUnmanaged(void) = .empty,
 
     pub fn create(params: []const abi.ConfigParam_ABI) !*SqliteDriver {
         const alloc = std.heap.c_allocator;
         var path: []const u8 = ":memory:";
+        var schema_path: []const u8 = "";
         for (params) |p| {
-            if (std.mem.eql(u8, p.key.toSlice(), "path")) {
-                const v = p.value.toSlice();
+            const k = p.key.toSlice();
+            const v = p.value.toSlice();
+            if (std.mem.eql(u8, k, "path")) {
                 if (v.len > 0) path = v;
+            } else if (std.mem.eql(u8, k, "schema")) {
+                if (v.len > 0) schema_path = v;
             }
         }
 
@@ -174,6 +179,7 @@ pub const SqliteDriver = struct {
         errdefer _ = c.sqlite3_close(db);
 
         _ = c.sqlite3_busy_timeout(db, 5000);
+        _ = c.sqlite3_exec(db, "PRAGMA foreign_keys = ON;", null, null, null);
         if (!std.mem.eql(u8, path, ":memory:")) {
             _ = c.sqlite3_exec(db, "PRAGMA journal_mode=WAL;", null, null, null);
         }
@@ -183,10 +189,20 @@ pub const SqliteDriver = struct {
             .allocator = alloc,
             .db = db,
         };
+        errdefer self.deinit();
+
+        if (schema_path.len > 0) {
+            try self.provisionSchemaFromFile(schema_path);
+        }
         return self;
     }
 
     pub fn deinit(self: *SqliteDriver) void {
+        var it = self.blob_columns.keyIterator();
+        while (it.next()) |k| {
+            self.allocator.free(k.*);
+        }
+        self.blob_columns.deinit(self.allocator);
         _ = c.sqlite3_close(self.db);
         self.allocator.destroy(self);
     }
@@ -195,6 +211,299 @@ pub const SqliteDriver = struct {
         if (c.sqlite3_exec(self.db, sql_z.ptr, null, null, null) != c.SQLITE_OK) {
             return error.SqliteExecFailed;
         }
+    }
+
+    fn markBlobColumn(self: *SqliteDriver, table: []const u8, col: []const u8) !void {
+        const key = try std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ table, col });
+        errdefer self.allocator.free(key);
+        const gop = try self.blob_columns.getOrPut(self.allocator, key);
+        if (gop.found_existing) {
+            self.allocator.free(key);
+        }
+    }
+
+    fn isBlobColumn(self: *const SqliteDriver, table: []const u8, col: []const u8) bool {
+        var buf: [256]u8 = undefined;
+        if (table.len + 1 + col.len <= buf.len) {
+            @memcpy(buf[0..table.len], table);
+            buf[table.len] = 0;
+            @memcpy(buf[table.len + 1 .. table.len + 1 + col.len], col);
+            return self.blob_columns.contains(buf[0 .. table.len + 1 + col.len]);
+        }
+        const key = std.fmt.allocPrint(self.allocator, "{s}\x00{s}", .{ table, col }) catch return false;
+        defer self.allocator.free(key);
+        return self.blob_columns.contains(key);
+    }
+
+    fn mapYamlSqlType(t: []const u8) []const u8 {
+        if (std.mem.eql(u8, t, "int64") or std.mem.eql(u8, t, "uint64") or std.mem.eql(u8, t, "bool")) {
+            return "INTEGER";
+        }
+        if (std.mem.eql(u8, t, "float64")) return "REAL";
+        if (std.mem.eql(u8, t, "blob") or std.mem.eql(u8, t, "bytes")) return "BLOB";
+        return "TEXT";
+    }
+
+    fn recreateIfIncompatiblePk(self: *SqliteDriver, table: []const u8, pk_col: ?[]const u8) !void {
+        const expected_pk = pk_col orelse return;
+        var sql: std.ArrayListUnmanaged(u8) = .empty;
+        defer sql.deinit(self.allocator);
+
+        try sql.appendSlice(self.allocator, "PRAGMA table_info(");
+        try appendQuotedIdent(&sql, self.allocator, table);
+        try sql.appendSlice(self.allocator, ");\x00");
+        const sql_z: [:0]const u8 = sql.items[0 .. sql.items.len - 1 :0];
+
+        var stmt_opt: ?*c.sqlite3_stmt = null;
+        if (c.sqlite3_prepare_v2(self.db, sql_z.ptr, @intCast(sql_z.len), &stmt_opt, null) != c.SQLITE_OK) {
+            return;
+        }
+        const stmt = stmt_opt orelse return;
+        defer _ = c.sqlite3_finalize(stmt);
+
+        var has_rows = false;
+        var pk_matches = false;
+        while (c.sqlite3_step(stmt) == c.SQLITE_ROW) {
+            has_rows = true;
+            const name_ptr = c.sqlite3_column_text(stmt, 1) orelse continue;
+            const name = std.mem.span(@as([*:0]const u8, @ptrCast(name_ptr)));
+            const pk_flag = c.sqlite3_column_int(stmt, 5);
+            if (pk_flag > 0 and std.mem.eql(u8, name, expected_pk)) {
+                pk_matches = true;
+            }
+        }
+
+        if (has_rows and !pk_matches) {
+            var drop_sql: std.ArrayListUnmanaged(u8) = .empty;
+            defer drop_sql.deinit(self.allocator);
+            try drop_sql.appendSlice(self.allocator, "DROP TABLE IF EXISTS ");
+            try appendQuotedIdent(&drop_sql, self.allocator, table);
+            try drop_sql.appendSlice(self.allocator, ";\x00");
+            try self.execZ(drop_sql.items[0 .. drop_sql.items.len - 1 :0]);
+        }
+    }
+
+    const YamlColDef = struct {
+        name: []const u8,
+        sql_type: []const u8 = "TEXT",
+        is_blob: bool = false,
+        pk: bool = false,
+        nullable: bool = false,
+        default_val: ?[]const u8 = null,
+        ref: ?[]const u8 = null,
+        on_delete: ?[]const u8 = null,
+    };
+
+    fn flushTableDdl(
+        self: *SqliteDriver,
+        table: []const u8,
+        cols: []const YamlColDef,
+        indexes: []const []const u8,
+    ) !void {
+        if (table.len == 0 or cols.len == 0) return;
+
+        var pk_col: ?[]const u8 = null;
+        for (cols) |col| {
+            if (col.pk) {
+                pk_col = col.name;
+                break;
+            }
+        }
+        try self.recreateIfIncompatiblePk(table, pk_col);
+
+        var sql: std.ArrayListUnmanaged(u8) = .empty;
+        defer sql.deinit(self.allocator);
+
+        try sql.appendSlice(self.allocator, "CREATE TABLE IF NOT EXISTS ");
+        try appendQuotedIdent(&sql, self.allocator, table);
+        try sql.appendSlice(self.allocator, " (");
+
+        for (cols, 0..) |col, i| {
+            if (i > 0) try sql.appendSlice(self.allocator, ", ");
+            try appendQuotedIdent(&sql, self.allocator, col.name);
+            try sql.append(self.allocator, ' ');
+            try sql.appendSlice(self.allocator, col.sql_type);
+            if (col.pk) {
+                try sql.appendSlice(self.allocator, " PRIMARY KEY");
+            } else if (!col.nullable) {
+                try sql.appendSlice(self.allocator, " NOT NULL");
+            }
+            if (col.default_val) |dv| {
+                try sql.appendSlice(self.allocator, " DEFAULT ");
+                try sql.appendSlice(self.allocator, dv);
+            }
+            if (col.ref) |ref_str| {
+                if (std.mem.indexOfScalar(u8, ref_str, '.')) |dot_idx| {
+                    const ref_tbl = ref_str[0..dot_idx];
+                    const ref_col = ref_str[dot_idx + 1 ..];
+                    try sql.appendSlice(self.allocator, " REFERENCES ");
+                    try appendQuotedIdent(&sql, self.allocator, ref_tbl);
+                    try sql.append(self.allocator, '(');
+                    try appendQuotedIdent(&sql, self.allocator, ref_col);
+                    try sql.append(self.allocator, ')');
+                    if (col.on_delete) |od| {
+                        if (std.ascii.eqlIgnoreCase(od, "cascade")) {
+                            try sql.appendSlice(self.allocator, " ON DELETE CASCADE");
+                        }
+                    }
+                }
+            }
+            if (col.is_blob) {
+                try self.markBlobColumn(table, col.name);
+            }
+        }
+        try sql.appendSlice(self.allocator, ");\x00");
+        try self.execZ(sql.items[0 .. sql.items.len - 1 :0]);
+
+        for (indexes) |idx_col| {
+            var idx_sql: std.ArrayListUnmanaged(u8) = .empty;
+            defer idx_sql.deinit(self.allocator);
+            const idx_name = try std.fmt.allocPrint(self.allocator, "idx_{s}_{s}", .{ table, idx_col });
+            defer self.allocator.free(idx_name);
+
+            try idx_sql.appendSlice(self.allocator, "CREATE INDEX IF NOT EXISTS ");
+            try appendQuotedIdent(&idx_sql, self.allocator, idx_name);
+            try idx_sql.appendSlice(self.allocator, " ON ");
+            try appendQuotedIdent(&idx_sql, self.allocator, table);
+            try idx_sql.appendSlice(self.allocator, " (");
+            try appendQuotedIdent(&idx_sql, self.allocator, idx_col);
+            try idx_sql.appendSlice(self.allocator, ");\x00");
+            try self.execZ(idx_sql.items[0 .. idx_sql.items.len - 1 :0]);
+        }
+    }
+
+    fn stripYamlQuotes(v: []const u8) []const u8 {
+        const trimmed = std.mem.trim(u8, v, " \t\r");
+        if (trimmed.len >= 2 and trimmed[0] == '"' and trimmed[trimmed.len - 1] == '"') {
+            return trimmed[1 .. trimmed.len - 1];
+        }
+        return trimmed;
+    }
+
+    fn parseInlineColAttrs(name: []const u8, rhs: []const u8) YamlColDef {
+        var col = YamlColDef{ .name = name };
+        const inner = std.mem.trim(u8, rhs, " \t\r{}");
+        var it = std.mem.splitScalar(u8, inner, ',');
+        while (it.next()) |raw_kv| {
+            const kv = std.mem.trim(u8, raw_kv, " \t");
+            const colon = std.mem.indexOfScalar(u8, kv, ':') orelse continue;
+            const k = std.mem.trim(u8, kv[0..colon], " \t");
+            const v_raw = std.mem.trim(u8, kv[colon + 1 ..], " \t");
+            const v = stripYamlQuotes(v_raw);
+            if (std.mem.eql(u8, k, "type")) {
+                col.sql_type = mapYamlSqlType(v);
+                col.is_blob = std.mem.eql(u8, v, "blob") or std.mem.eql(u8, v, "bytes");
+            } else if (std.mem.eql(u8, k, "pk")) {
+                col.pk = std.mem.eql(u8, v, "true");
+            } else if (std.mem.eql(u8, k, "nullable")) {
+                col.nullable = std.mem.eql(u8, v, "true");
+            } else if (std.mem.eql(u8, k, "default")) {
+                col.default_val = v;
+            } else if (std.mem.eql(u8, k, "ref")) {
+                col.ref = v;
+            } else if (std.mem.eql(u8, k, "on_delete")) {
+                col.on_delete = v;
+            }
+        }
+        return col;
+    }
+
+    fn provisionSchemaFromFile(self: *SqliteDriver, schema_path: []const u8) !void {
+        const path_z = try self.allocator.dupeSentinel(u8, schema_path, 0);
+        defer self.allocator.free(path_z);
+
+        const fp = std.c.fopen(path_z.ptr, "rb") orelse return error.SchemaFileNotFound;
+        defer _ = std.c.fclose(fp);
+
+        var content_list: std.ArrayListUnmanaged(u8) = .empty;
+        defer content_list.deinit(self.allocator);
+        var buf: [4096]u8 = undefined;
+        while (true) {
+            const n = std.c.fread(&buf, 1, buf.len, fp);
+            if (n == 0) break;
+            try content_list.appendSlice(self.allocator, buf[0..n]);
+        }
+        const content = content_list.items;
+
+        var in_schemas = false;
+        var table_indent: ?usize = null;
+        var current_table: []const u8 = "";
+        var section: enum { none, columns, indexes } = .none;
+
+        var cols: std.ArrayListUnmanaged(YamlColDef) = .empty;
+        defer cols.deinit(self.allocator);
+        var indexes: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer indexes.deinit(self.allocator);
+
+        var lines = std.mem.splitScalar(u8, content, '\n');
+        while (lines.next()) |raw_line| {
+            const no_cr = std.mem.trimEnd(u8, raw_line, "\r");
+            const trimmed = std.mem.trimStart(u8, no_cr, " ");
+            if (trimmed.len == 0 or trimmed[0] == '#') continue;
+
+            const indent = no_cr.len - trimmed.len;
+            if (!in_schemas) {
+                if (indent == 0 and std.mem.startsWith(u8, trimmed, "schemas:")) {
+                    in_schemas = true;
+                }
+                continue;
+            }
+            if (indent == 0) break;
+
+            // Detect table_indent: tables are 2 levels under `schemas:` (e.g. schemas -> catalog -> vfs_meta)
+            // or 1 level if no namespace. We detect it when we see `columns:` at `table_indent + 2`.
+            if (std.mem.eql(u8, trimmed, "columns:")) {
+                if (table_indent == null and indent >= 2) {
+                    table_indent = indent - 2;
+                }
+                section = .columns;
+                continue;
+            }
+            if (std.mem.eql(u8, trimmed, "indexes:")) {
+                section = .indexes;
+                continue;
+            }
+
+            if (table_indent) |ti| {
+                if (indent == ti and std.mem.endsWith(u8, trimmed, ":")) {
+                    try self.flushTableDdl(current_table, cols.items, indexes.items);
+                    cols.clearRetainingCapacity();
+                    indexes.clearRetainingCapacity();
+                    current_table = trimmed[0 .. trimmed.len - 1];
+                    section = .none;
+                    continue;
+                }
+                if (indent < ti) {
+                    try self.flushTableDdl(current_table, cols.items, indexes.items);
+                    cols.clearRetainingCapacity();
+                    indexes.clearRetainingCapacity();
+                    current_table = "";
+                    section = .none;
+                    continue;
+                }
+            } else if (std.mem.endsWith(u8, trimmed, ":")) {
+                // Track candidate table name until we see `columns:`
+                current_table = trimmed[0 .. trimmed.len - 1];
+                continue;
+            }
+
+            if (section == .columns) {
+                if (std.mem.indexOfScalar(u8, trimmed, ':')) |colon| {
+                    const col_name = std.mem.trim(u8, trimmed[0..colon], " \t");
+                    const rhs = std.mem.trim(u8, trimmed[colon + 1 ..], " \t");
+                    try cols.append(self.allocator, parseInlineColAttrs(col_name, rhs));
+                }
+            } else if (section == .indexes) {
+                if (std.mem.startsWith(u8, trimmed, "- ")) {
+                    const idx_col = std.mem.trim(u8, trimmed[2..], " \t");
+                    if (idx_col.len > 0) {
+                        try indexes.append(self.allocator, idx_col);
+                    }
+                }
+            }
+        }
+
+        try self.flushTableDdl(current_table, cols.items, indexes.items);
     }
 
     fn ensureTableAndColumns(self: *SqliteDriver, table: []const u8, fields: []const abi.NamedField_ABI) !void {
@@ -241,6 +550,50 @@ pub const SqliteDriver = struct {
         if (table.len == 0) return error.InvalidTableName;
 
         const fields = spec.fieldsSlice();
+        if (fields.len > 0 and std.mem.eql(u8, table, "clear_table")) {
+            if (fields[0].value.tag == .bytes_val) {
+                const target_table = fields[0].value.payload.bytes.toSlice();
+                var clr_sql: std.ArrayListUnmanaged(u8) = .empty;
+                defer clr_sql.deinit(self.allocator);
+                try clr_sql.appendSlice(self.allocator, "DELETE FROM ");
+                try appendQuotedIdent(&clr_sql, self.allocator, target_table);
+                try clr_sql.appendSlice(self.allocator, ";\x00");
+                self.execZ(clr_sql.items[0 .. clr_sql.items.len - 1 :0]) catch {};
+            }
+            return;
+        }
+        if (fields.len > 0 and (std.mem.eql(u8, table, "delete_inode") or std.mem.eql(u8, table, "delete_pending_gc"))) {
+            const target_table: []const u8 = if (std.mem.eql(u8, table, "delete_inode")) "inodes" else "pending_gc";
+            const key_col = std.mem.span(fields[0].name);
+            var del_sql: std.ArrayListUnmanaged(u8) = .empty;
+            defer del_sql.deinit(self.allocator);
+            try del_sql.appendSlice(self.allocator, "DELETE FROM ");
+            try appendQuotedIdent(&del_sql, self.allocator, target_table);
+            try del_sql.appendSlice(self.allocator, " WHERE ");
+            try appendQuotedIdent(&del_sql, self.allocator, key_col);
+            try del_sql.appendSlice(self.allocator, " = ?;\x00");
+            const del_z: [:0]const u8 = del_sql.items[0 .. del_sql.items.len - 1 :0];
+
+            var stmt_opt: ?*c.sqlite3_stmt = null;
+            if (c.sqlite3_prepare_v2(self.db, del_z.ptr, @intCast(del_z.len), &stmt_opt, null) != c.SQLITE_OK) {
+                return error.PrepareFailed;
+            }
+            const stmt = stmt_opt.?;
+            defer _ = c.sqlite3_finalize(stmt);
+
+            const f = fields[0];
+            switch (f.value.tag) {
+                .bytes_val => {
+                    const s = f.value.payload.bytes.toSlice();
+                    _ = c.sqlite3_bind_text(stmt, 1, s.ptr, @intCast(s.len), null);
+                },
+                .int_val => _ = c.sqlite3_bind_int64(stmt, 1, f.value.payload.i),
+                else => _ = c.sqlite3_bind_null(stmt, 1),
+            }
+            if (c.sqlite3_step(stmt) != c.SQLITE_DONE) return error.StepFailed;
+            return;
+        }
+
         if (fields.len > 0) {
             try self.ensureTableAndColumns(table, fields);
 
@@ -287,6 +640,13 @@ pub const SqliteDriver = struct {
                     .float_val => c.sqlite3_bind_double(stmt, bind_idx, f.value.payload.f),
                     .bytes_val => blk: {
                         const s = f.value.payload.bytes.toSlice();
+                        const col_name = std.mem.span(f.name);
+                        const is_blob = self.isBlobColumn(table, col_name) or
+                            !std.unicode.utf8ValidateSlice(s) or
+                            std.mem.indexOfScalar(u8, s, 0) != null;
+                        if (is_blob) {
+                            break :blk c.sqlite3_bind_blob(stmt, bind_idx, s.ptr, @intCast(s.len), SQLITE_TRANSIENT);
+                        }
                         if (s.len == 0) {
                             break :blk c.sqlite3_bind_text(stmt, bind_idx, "", 0, SQLITE_TRANSIENT);
                         }
@@ -341,6 +701,11 @@ pub const SqliteDriver = struct {
 
         try sql.appendSlice(self.allocator, "SELECT * FROM ");
         try appendQuotedIdent(&sql, self.allocator, table);
+        const filter = spec.filter_sql_or_expr.toSlice();
+        if (filter.len > 0) {
+            try sql.appendSlice(self.allocator, " WHERE ");
+            try sql.appendSlice(self.allocator, filter);
+        }
         if (spec.limit > 0) {
             try sql.print(self.allocator, " LIMIT {d} OFFSET {d}", .{ spec.limit, spec.offset });
         }
@@ -417,7 +782,7 @@ pub const SqliteDriver = struct {
 
 pub const manifest = sdk.sdk.defineDriver(SqliteDriver, .{
     .name = "sqlite",
-    .version = .{ .major = 0, .minor = 1, .patch = 0 },
+    .version = .{ .major = 0, .minor = 2, .patch = 0 },
 });
 
 comptime {
