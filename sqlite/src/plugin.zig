@@ -299,6 +299,7 @@ pub const SqliteDriver = struct {
         table: []const u8,
         cols: []const YamlColDef,
         indexes: []const []const u8,
+        primary_keys: []const []const u8,
     ) !void {
         if (table.len == 0 or cols.len == 0) return;
 
@@ -351,6 +352,14 @@ pub const SqliteDriver = struct {
             if (col.is_blob) {
                 try self.markBlobColumn(table, col.name);
             }
+        }
+        if (primary_keys.len > 0) {
+            try sql.appendSlice(self.allocator, ", PRIMARY KEY (");
+            for (primary_keys, 0..) |pk_name, i| {
+                if (i > 0) try sql.appendSlice(self.allocator, ", ");
+                try appendQuotedIdent(&sql, self.allocator, pk_name);
+            }
+            try sql.append(self.allocator, ')');
         }
         try sql.appendSlice(self.allocator, ");\x00");
         try self.execZ(sql.items[0 .. sql.items.len - 1 :0]);
@@ -428,12 +437,14 @@ pub const SqliteDriver = struct {
         var in_schemas = false;
         var table_indent: ?usize = null;
         var current_table: []const u8 = "";
-        var section: enum { none, columns, indexes } = .none;
+        var section: enum { none, columns, indexes, primary_key } = .none;
 
         var cols: std.ArrayListUnmanaged(YamlColDef) = .empty;
         defer cols.deinit(self.allocator);
         var indexes: std.ArrayListUnmanaged([]const u8) = .empty;
         defer indexes.deinit(self.allocator);
+        var pks: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer pks.deinit(self.allocator);
 
         var lines = std.mem.splitScalar(u8, content, '\n');
         while (lines.next()) |raw_line| {
@@ -463,20 +474,26 @@ pub const SqliteDriver = struct {
                 section = .indexes;
                 continue;
             }
+            if (std.mem.eql(u8, trimmed, "primary_key:")) {
+                section = .primary_key;
+                continue;
+            }
 
             if (table_indent) |ti| {
                 if (indent == ti and std.mem.endsWith(u8, trimmed, ":")) {
-                    try self.flushTableDdl(current_table, cols.items, indexes.items);
+                    try self.flushTableDdl(current_table, cols.items, indexes.items, pks.items);
                     cols.clearRetainingCapacity();
                     indexes.clearRetainingCapacity();
+                    pks.clearRetainingCapacity();
                     current_table = trimmed[0 .. trimmed.len - 1];
                     section = .none;
                     continue;
                 }
                 if (indent < ti) {
-                    try self.flushTableDdl(current_table, cols.items, indexes.items);
+                    try self.flushTableDdl(current_table, cols.items, indexes.items, pks.items);
                     cols.clearRetainingCapacity();
                     indexes.clearRetainingCapacity();
+                    pks.clearRetainingCapacity();
                     current_table = "";
                     section = .none;
                     continue;
@@ -500,10 +517,17 @@ pub const SqliteDriver = struct {
                         try indexes.append(self.allocator, idx_col);
                     }
                 }
+            } else if (section == .primary_key) {
+                if (std.mem.startsWith(u8, trimmed, "- ")) {
+                    const pk_col = std.mem.trim(u8, trimmed[2..], " \t");
+                    if (pk_col.len > 0) {
+                        try pks.append(self.allocator, pk_col);
+                    }
+                }
             }
         }
 
-        try self.flushTableDdl(current_table, cols.items, indexes.items);
+        try self.flushTableDdl(current_table, cols.items, indexes.items, pks.items);
     }
 
     fn ensureTableAndColumns(self: *SqliteDriver, table: []const u8, fields: []const abi.NamedField_ABI) !void {

@@ -49,7 +49,7 @@ pub const FileStoreDriver = struct {
         var base: []const u8 = "";
         for (params) |p| {
             const k = p.key.toSlice();
-            if (std.mem.eql(u8, k, "path") or std.mem.eql(u8, k, "base_dir")) {
+            if (std.mem.eql(u8, k, "path") or std.mem.eql(u8, k, "base_dir") or std.mem.eql(u8, k, "directory")) {
                 base = p.value.toSlice();
             }
         }
@@ -92,6 +92,59 @@ pub const FileStoreDriver = struct {
             .handle = @ptrCast(iter),
             .vtable = &FileRowIterator.vtable,
         };
+    }
+
+    pub fn writeRow(self: *FileStoreDriver, spec: abi.driver.WriteSpec_ABI) !void {
+        const fields = spec.fieldsSlice();
+        var data: []const u8 = if (spec.raw_bytes.len > 0) spec.raw_bytes.toSlice() else "";
+        var filename: []const u8 = "";
+        var series: []const u8 = "";
+        var library: []const u8 = "";
+        var archive_path: []const u8 = "";
+
+        for (fields) |f| {
+            const k = std.mem.span(f.name);
+            if (f.value.tag != .bytes_val) continue;
+            const v = f.value.payload.bytes.toSlice();
+            if (std.mem.eql(u8, k, "data") or std.mem.eql(u8, k, "bytes") or std.mem.eql(u8, k, "content")) {
+                if (data.len == 0) data = v;
+            } else if (std.mem.eql(u8, k, "filename")) {
+                filename = v;
+            } else if (std.mem.eql(u8, k, "series")) {
+                series = v;
+            } else if (std.mem.eql(u8, k, "library")) {
+                library = v;
+            } else if (std.mem.eql(u8, k, "archive_path")) {
+                archive_path = v;
+            }
+        }
+
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const base = std.mem.trimEnd(u8, self.base_dir, "/");
+        const table = spec.table.toSlice();
+        const target_path = if (filename.len > 0) blk: {
+            if (library.len > 0 and series.len > 0) {
+                break :blk try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}/{s}", .{ if (base.len > 0) base else ".", library, series, filename });
+            } else if (series.len > 0) {
+                break :blk try std.fmt.allocPrint(self.allocator, "{s}/{s}/{s}", .{ if (base.len > 0) base else ".", series, filename });
+            } else {
+                break :blk try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{ if (base.len > 0) base else ".", filename });
+            }
+        } else if (archive_path.len > 0) blk: {
+            break :blk try self.allocator.dupe(u8, archive_path);
+        } else blk: {
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}/{s}.bin", .{ if (base.len > 0) base else ".", if (table.len > 0) table else "output" });
+        };
+        defer self.allocator.free(target_path);
+
+        if (std.fs.path.dirname(target_path)) |parent| {
+            if (parent.len > 0) {
+                try std.Io.Dir.cwd().createDirPath(io, parent);
+            }
+        }
+        const file = try std.Io.Dir.cwd().createFile(io, target_path, .{ .truncate = true });
+        defer file.close(io);
+        try file.writeStreamingAll(io, data);
     }
 
     pub fn recordCount(_: *const FileStoreDriver, _: []const u8) usize {
