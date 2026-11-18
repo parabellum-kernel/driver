@@ -5,14 +5,12 @@ pub const sqlite = @import("parabellum_datasource_sqlite");
 pub const yaml = @import("parabellum_datasource_yaml");
 pub const yaml_file = yaml;
 pub const ssh_store = @import("parabellum_datasource_ssh_store");
-pub const gdrive_store = @import("parabellum_datasource_gdrive_store");
 
 pub const MemoryRepository = memory.MemoryRepository;
 pub const FileStoreRepository = file_store.FileStoreRepository;
 pub const SqliteRepository = sqlite.SqliteRepository;
 pub const YamlFileRepository = yaml.YamlFileRepository;
 pub const SshStoreRepository = ssh_store.SshStoreRepository;
-pub const GDriveStoreRepository = gdrive_store.GDriveStoreRepository;
 
 pub fn registerDefaultDrivers(registry: *parabellum.repository.RepositoryRegistry) !void {
     try registry.registerDriver("memory", &memory.MemoryRepository.createHeap);
@@ -21,7 +19,6 @@ pub fn registerDefaultDrivers(registry: *parabellum.repository.RepositoryRegistr
     try registry.registerDriver("yaml", &yaml.YamlFileRepository.createHeap);
     try registry.registerDriver("yaml_file", &yaml.YamlFileRepository.createHeap);
     try registry.registerDriver("ssh_store", &ssh_store.SshStoreRepository.createHeap);
-    try registry.registerDriver("gdrive_store", &gdrive_store.GDriveStoreRepository.createHeap);
 }
 
 // Per-driver kernel extensions (opt-in individually without bundling all backends)

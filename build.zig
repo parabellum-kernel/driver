@@ -13,10 +13,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const gdrive_vfs_dep = b.dependency("lib_gdrive_vfs", .{
-        .target = target,
-        .optimize = optimize,
-    });
 
     const sqlite_c = b.addTranslateC(.{
         .root_source_file = libs_dep.path("sqlite/c/sqlite3_c.h"),
@@ -31,7 +27,6 @@ pub fn build(b: *std.Build) void {
         .{ .name = "sqlite", .path = "sqlite/src/plugin.zig" },
         .{ .name = "yaml", .path = "yaml/src/plugin.zig" },
         .{ .name = "ssh_store", .path = "ssh_store/src/plugin.zig" },
-        .{ .name = "gdrive_store", .path = "gdrive_store/src/plugin.zig" },
     };
 
     const test_step = b.step("test", "Run all driver C-ABI conformance tests");
@@ -45,10 +40,6 @@ pub fn build(b: *std.Build) void {
         if (std.mem.eql(u8, drv.name, "sqlite")) {
             drv_so.root_module.addImport("sqlite3_c", sqlite_c.createModule());
             drv_so.root_module.linkSystemLibrary("sqlite3", .{});
-        }
-        if (std.mem.eql(u8, drv.name, "gdrive_store")) {
-            drv_so.root_module.addImport("gdrive_vfs", gdrive_vfs_dep.module("gdrive_vfs"));
-            drv_so.root_module.link_libc = true;
         }
         b.installArtifact(drv_so);
         const run_t = b.addRunArtifact(b.addTest(.{ .root_module = drv_so.root_module }));
