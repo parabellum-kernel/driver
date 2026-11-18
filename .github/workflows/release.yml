@@ -24,6 +24,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: driver
+
+      - name: Checkout lib-gdrive-vfs
+        uses: actions/checkout@v4
+        with:
+          repository: parabellum-kernel/lib-gdrive-vfs
+          path: lib-gdrive-vfs
+          token: ${{ secrets.GH_REPO_PAT || github.token }}
+
+      - name: Checkout lib-gdrive
+        uses: actions/checkout@v4
+        with:
+          repository: parabellum-kernel/lib-gdrive
+          path: lib-gdrive
+          token: ${{ secrets.GH_REPO_PAT || github.token }}
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -35,6 +51,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 
       - name: Build release artifacts
+        working-directory: driver
         run: |
           zig build -Doptimize=ReleaseSafe
           mkdir -p dist
@@ -46,5 +63,4 @@ jobs:
       - name: Publish assets to driver Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
-
+          files: driver/dist/*
