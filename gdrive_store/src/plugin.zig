@@ -429,7 +429,7 @@ pub const GDriveStoreDriver = struct {
 
 pub const manifest = sdk.sdk.defineDriver(GDriveStoreDriver, .{
     .name = "gdrive_store",
-    .version = .{ .major = 0, .minor = 1, .patch = 0 },
+    .version = .{ .major = 1, .minor = 3, .patch = 1 },
 });
 
 comptime {

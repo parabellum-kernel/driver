@@ -250,7 +250,7 @@ pub const YamlDriver = struct {
 
 pub const manifest = sdk.sdk.defineDriver(YamlDriver, .{
     .name = "yaml",
-    .version = .{ .major = 0, .minor = 1, .patch = 0 },
+    .version = .{ .major = 1, .minor = 3, .patch = 1 },
 });
 
 comptime {
