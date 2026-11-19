@@ -248,7 +248,7 @@ pub const YamlDriver = struct {
     }
 };
 
-pub const manifest = sdk.sdk.defineDriver(YamlDriver, .{
+pub const manifest = sdk.driver.Driver.define(YamlDriver, .{
     .name = "yaml",
     .version = .{ .major = 2, .minor = 0, .patch = 1 },
 });

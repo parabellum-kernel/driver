@@ -804,7 +804,7 @@ pub const SqliteDriver = struct {
     }
 };
 
-pub const manifest = sdk.sdk.defineDriver(SqliteDriver, .{
+pub const manifest = sdk.driver.Driver.define(SqliteDriver, .{
     .name = "sqlite",
     .version = .{ .major = 2, .minor = 0, .patch = 1 },
 });

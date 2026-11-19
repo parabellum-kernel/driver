@@ -171,7 +171,7 @@ pub const SshStoreDriver = struct {
     }
 };
 
-pub const manifest = sdk.sdk.defineDriver(SshStoreDriver, .{
+pub const manifest = sdk.driver.Driver.define(SshStoreDriver, .{
     .name = "ssh_store",
     .version = .{ .major = 2, .minor = 0, .patch = 1 },
 });

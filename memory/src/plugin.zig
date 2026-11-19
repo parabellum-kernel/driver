@@ -182,7 +182,7 @@ pub const MemoryDriver = struct {
     }
 };
 
-pub const manifest = sdk.sdk.defineDriver(MemoryDriver, .{
+pub const manifest = sdk.driver.Driver.define(MemoryDriver, .{
     .name = "memory",
     .version = .{ .major = 2, .minor = 0, .patch = 1 },
 });
