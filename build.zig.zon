@@ -1,6 +1,6 @@
 .{
     .name = .parabellum_drivers,
-    .version = "2.0.2",
+    .version = "2.0.3",
     .minimum_zig_version = "0.17.1",
     .fingerprint = 0xb8fc1dba4ed3025d,
     .dependencies = .{

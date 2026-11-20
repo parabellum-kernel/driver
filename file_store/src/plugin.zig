@@ -163,7 +163,7 @@ pub const FileStoreDriver = struct {
 
 pub const manifest = sdk.driver.Driver.define(FileStoreDriver, .{
     .name = "file_store",
-    .version = .{ .major = 2, .minor = 0, .patch = 2 },
+    .version = .{ .major = 2, .minor = 0, .patch = 3 },
 });
 
 comptime {

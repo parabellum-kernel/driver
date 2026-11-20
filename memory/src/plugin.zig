@@ -184,7 +184,7 @@ pub const MemoryDriver = struct {
 
 pub const manifest = sdk.driver.Driver.define(MemoryDriver, .{
     .name = "memory",
-    .version = .{ .major = 2, .minor = 0, .patch = 2 },
+    .version = .{ .major = 2, .minor = 0, .patch = 3 },
 });
 
 comptime {
