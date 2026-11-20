@@ -439,7 +439,7 @@ pub const SqliteDriver = struct {
         var in_schemas = false;
         var table_indent: ?usize = null;
         var current_table: []const u8 = "";
-        var section: enum { none, columns, indexes, primary_key } = .none;
+        var section: enum { none, columns, indexes, primary_key, seeds } = .none;
 
         var cols: std.ArrayListUnmanaged(YamlColDef) = .empty;
         defer cols.deinit(self.allocator);
@@ -478,6 +478,14 @@ pub const SqliteDriver = struct {
             }
             if (std.mem.eql(u8, trimmed, "primary_key:")) {
                 section = .primary_key;
+                continue;
+            }
+            if (std.mem.eql(u8, trimmed, "seeds:")) {
+                try self.flushTableDdl(current_table, cols.items, indexes.items, pks.items);
+                cols.clearRetainingCapacity();
+                indexes.clearRetainingCapacity();
+                pks.clearRetainingCapacity();
+                section = .seeds;
                 continue;
             }
 
@@ -526,10 +534,83 @@ pub const SqliteDriver = struct {
                         try pks.append(self.allocator, pk_col);
                     }
                 }
+            } else if (section == .seeds) {
+                if (current_table.len > 0 and std.mem.startsWith(u8, trimmed, "- {") and std.mem.endsWith(u8, trimmed, "}")) {
+                    try self.insertSeedRow(current_table, trimmed[3 .. trimmed.len - 1]);
+                }
             }
         }
 
         try self.flushTableDdl(current_table, cols.items, indexes.items, pks.items);
+    }
+
+    fn insertSeedRow(self: *SqliteDriver, table: []const u8, inner: []const u8) !void {
+        var col_names: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer col_names.deinit(self.allocator);
+        var col_vals: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer col_vals.deinit(self.allocator);
+
+        var i: usize = 0;
+        while (i < inner.len) {
+            while (i < inner.len and (inner[i] == ' ' or inner[i] == '\t' or inner[i] == ',')) : (i += 1) {}
+            if (i >= inner.len) break;
+            const colon = std.mem.indexOfScalarPos(u8, inner, i, ':') orelse break;
+            const k = std.mem.trim(u8, inner[i..colon], " \t");
+            i = colon + 1;
+            while (i < inner.len and (inner[i] == ' ' or inner[i] == '\t')) : (i += 1) {}
+            if (i >= inner.len) break;
+
+            var v: []const u8 = "";
+            if (inner[i] == '"' or inner[i] == '\'') {
+                const q = inner[i];
+                i += 1;
+                const start = i;
+                while (i < inner.len and inner[i] != q) : (i += 1) {}
+                v = inner[start..i];
+                if (i < inner.len) i += 1;
+            } else {
+                const start = i;
+                while (i < inner.len and inner[i] != ',') : (i += 1) {}
+                v = std.mem.trim(u8, inner[start..i], " \t");
+            }
+            if (k.len > 0) {
+                try col_names.append(self.allocator, k);
+                try col_vals.append(self.allocator, v);
+            }
+        }
+        if (col_names.items.len == 0) return;
+
+        var sql: std.ArrayListUnmanaged(u8) = .empty;
+        defer sql.deinit(self.allocator);
+        try sql.appendSlice(self.allocator, "INSERT OR IGNORE INTO ");
+        try appendQuotedIdent(&sql, self.allocator, table);
+        try sql.appendSlice(self.allocator, " (");
+        for (col_names.items, 0..) |cn, idx| {
+            if (idx > 0) try sql.appendSlice(self.allocator, ", ");
+            try appendQuotedIdent(&sql, self.allocator, cn);
+        }
+        try sql.appendSlice(self.allocator, ") VALUES (");
+        for (0..col_vals.items.len) |idx| {
+            if (idx > 0) try sql.appendSlice(self.allocator, ", ");
+            try sql.append(self.allocator, '?');
+        }
+        try sql.appendSlice(self.allocator, ");\x00");
+
+        const sql_z: [:0]const u8 = sql.items[0 .. sql.items.len - 1 :0];
+        var stmt_opt: ?*c.sqlite3_stmt = null;
+        if (c.sqlite3_prepare_v2(self.db, sql_z.ptr, @intCast(sql_z.len), &stmt_opt, null) != c.SQLITE_OK) return;
+        const stmt = stmt_opt orelse return;
+        defer _ = c.sqlite3_finalize(stmt);
+
+        for (col_vals.items, 0..) |cv, idx| {
+            const bind_idx: c_int = @intCast(idx + 1);
+            if (std.fmt.parseInt(i64, cv, 10)) |iv| {
+                _ = c.sqlite3_bind_int64(stmt, bind_idx, iv);
+            } else |_| {
+                _ = sqlite3_bind_text(stmt, bind_idx, cv.ptr, @intCast(cv.len), SQLITE_TRANSIENT);
+            }
+        }
+        _ = c.sqlite3_step(stmt);
     }
 
     fn ensureTableAndColumns(self: *SqliteDriver, table: []const u8, fields: []const abi.NamedField_ABI) !void {
