@@ -4,7 +4,9 @@ const abi = sdk.abi;
 
 const c = @import("sqlite3_c");
 
-const SQLITE_TRANSIENT: c.sqlite3_destructor_type = @ptrFromInt(@as(usize, @bitCast(@as(isize, -1))));
+const SQLITE_TRANSIENT: isize = -1;
+extern fn sqlite3_bind_text(stmt: ?*c.sqlite3_stmt, col: c_int, text: [*c]const u8, n: c_int, dtor: isize) callconv(.c) c_int;
+extern fn sqlite3_bind_blob(stmt: ?*c.sqlite3_stmt, col: c_int, data: ?*const anyopaque, n: c_int, dtor: isize) callconv(.c) c_int;
 
 fn ensureParentDirs(path: []const u8) void {
     if (std.mem.eql(u8, path, ":memory:")) return;
@@ -669,12 +671,12 @@ pub const SqliteDriver = struct {
                             !std.unicode.utf8ValidateSlice(s) or
                             std.mem.indexOfScalar(u8, s, 0) != null;
                         if (is_blob) {
-                            break :blk c.sqlite3_bind_blob(stmt, bind_idx, s.ptr, @intCast(s.len), SQLITE_TRANSIENT);
+                            break :blk sqlite3_bind_blob(stmt, bind_idx, s.ptr, @intCast(s.len), SQLITE_TRANSIENT);
                         }
                         if (s.len == 0) {
-                            break :blk c.sqlite3_bind_text(stmt, bind_idx, "", 0, SQLITE_TRANSIENT);
+                            break :blk sqlite3_bind_text(stmt, bind_idx, "", 0, SQLITE_TRANSIENT);
                         }
-                        break :blk c.sqlite3_bind_text(stmt, bind_idx, s.ptr, @intCast(s.len), SQLITE_TRANSIENT);
+                        break :blk sqlite3_bind_text(stmt, bind_idx, s.ptr, @intCast(s.len), SQLITE_TRANSIENT);
                     },
                 };
                 if (rc != c.SQLITE_OK) return error.SqliteBindFailed;
@@ -709,7 +711,7 @@ pub const SqliteDriver = struct {
             defer _ = c.sqlite3_finalize(stmt);
 
             const raw = spec.raw_bytes.toSlice();
-            if (c.sqlite3_bind_blob(stmt, 1, raw.ptr, @intCast(raw.len), SQLITE_TRANSIENT) != c.SQLITE_OK) {
+            if (sqlite3_bind_blob(stmt, 1, raw.ptr, @intCast(raw.len), SQLITE_TRANSIENT) != c.SQLITE_OK) {
                 return error.SqliteBindFailed;
             }
             if (c.sqlite3_step(stmt) != c.SQLITE_DONE) {
