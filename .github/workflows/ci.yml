@@ -25,20 +25,6 @@ jobs:
           path: lib
           token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
 
-      - name: Checkout parabellum-kernel/lib-gdrive
-        uses: actions/checkout@v4
-        with:
-          repository: parabellum-kernel/lib-gdrive
-          path: lib-gdrive
-          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
-
-      - name: Checkout parabellum-kernel/lib-gdrive-vfs
-        uses: actions/checkout@v4
-        with:
-          repository: parabellum-kernel/lib-gdrive-vfs
-          path: lib-gdrive-vfs
-          token: ${{ secrets.RELEASE_PUSH_TOKEN || github.token }}
-
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:

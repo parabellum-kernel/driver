@@ -18,7 +18,7 @@ jobs:
           - os: ubuntu-latest
             asset_suffix: linux-x86_64
             lib_ext: so
-          - os: macos-14
+          - os: macos-15
             asset_suffix: macos-aarch64
             lib_ext: dylib
     runs-on: ${{ matrix.os }}
@@ -26,20 +26,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: driver
-
-      - name: Checkout lib-gdrive-vfs
-        uses: actions/checkout@v4
-        with:
-          repository: parabellum-kernel/lib-gdrive-vfs
-          path: lib-gdrive-vfs
-          token: ${{ secrets.GH_REPO_PAT || github.token }}
-
-      - name: Checkout lib-gdrive
-        uses: actions/checkout@v4
-        with:
-          repository: parabellum-kernel/lib-gdrive
-          path: lib-gdrive
-          token: ${{ secrets.GH_REPO_PAT || github.token }}
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
